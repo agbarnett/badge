@@ -1,0 +1,262 @@
+---
+title: "Analysis of BMJ Open badges study"
+author: "Adrian Barnett and Anisa Rowhani-Farid"
+date: "`r format(Sys.time(), '%d %B %Y')`"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning=FALSE, message=FALSE, error=FALSE, comment='', dpi=400)
+options(width=1000) # Wide pages
+options(scipen=999) # avoid scientific presentation
+# basic summary functions
+Missing = function(x) base::sum(is.na(x))
+Mean = function(x) base::mean(x, na.rm=TRUE)
+Median = function(x) stats::quantile(x, probs=0.5, na.rm=TRUE)
+Q1 = function(x) stats::quantile(x, probs=0.25, na.rm=TRUE)
+Q3 = function(x) stats::quantile(x, probs=0.75, na.rm=TRUE)
+Min = function(x) base::min(x, na.rm=TRUE)
+Max = function(x) base::max(x, na.rm=TRUE)
+Sum = function(x) base::sum(x, na.rm=TRUE)
+SD = function(x) stats::sd(x, na.rm=TRUE)
+N = function(x) base::length(x)
+# libraries
+library(dplyr)
+library(tables)
+library(tm) # for dealing with data sharing statements
+library(broom)
+library(pander)
+panderOptions('table.emphasize.rownames', FALSE)
+panderOptions('keep.trailing.zeros', TRUE)
+panderOptions('table.split.table', Inf)
+panderOptions('table.split.cells', Inf)
+panderOptions('big.mark', ',')
+library(ggplot2)
+g.theme = theme_bw() + theme(panel.grid.minor = element_blank())
+cbPalette = c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
+# function to round with trailing zeros
+roundz  = function(x, digits=0){formatC( round( x, digits ), format='f', digits=digits)}
+# get the data
+load('data/AnalysisReady.RData') # from 0_read_data.R
+# logical to scramble the treatment group (used later)
+scramble = TRUE
+```
+
+# Scrambled treatment group
+
+This document contains the statistical analyses for the BMJ Open badges study.
+The initial document was produced using a scrambled intervention group by randomly assigning participants to intervention or control wards.
+This allowed us to finalise the statistical analyses plan and ensure that all investigators understood the analyses before the real intervention was used.
+
+The descriptive statisics at baseline are presented using the real treatment groups as this does not influence the choice of the final analysis.
+We do not use statistical tests to compare the two randomised groups at baseline as such tests are hard to interpret and are not recommended by the CONSORT guidelines.
+
+This report and the statistical analysis were made using Rmarkdown with R version 3.5.2 (R Core Team 2018). 
+
+# Participant recruitment
+
+### CONSORT flow chart
+
+```{r CONSORT, fig.width=7.5, fig.height=7, dpi=400}
+source('1_consort_plot.R')
+par(mai=c(0,0.04,0.04,0.04))
+plotmat(M, pos = pos, name = labels, lwd = 1, shadow.size=0, curve=0,
+        box.lwd = 2, cex.txt = 1, box.size = frame$box.size, box.col=frame$box.col,
+        box.type = frame$box.type, box.prop = frame$box.prop, txt.col = tcol)
+# add left-aligned text; -0.185 controls the horizontal indent
+for (i in to.blank){
+  text(x=pos[i,1] - 0.185, y=pos[i,2], adj=c(0,0.5), labels=labels[i]) # minus controls text position
+}
+# extra arrow to excluded
+arrows(x0=0.5, x1=0.55, y0=0.82, length=0.12)
+```
+
+### Plot of cumulative numbers over time
+
+The plot below is based on those papers that were not initially excluded because they were a meta-analysis or systematic review.
+
+```{r recruit.dates}
+post.exclusion = filter(data, is.na(random.factor) == FALSE & study_type.factor != 'Meta-analysis and Systematic Review') # remove initial exclusions, but keep those that were eventually rejected
+tplot = ggplot(data=post.exclusion, aes(x=qut_recruitment_date, col=random.factor))+
+  stat_ecdf(size=1.1)+
+  theme_bw()+
+  xlab('')+
+  ylab('Cumulative distribution')+
+  scale_color_manual('Group', values=cbPalette[2:3])+
+  theme(legend.position = c(0.8,0.2))
+tplot
+# for text below
+recruit = summarise(post.exclusion, min = min(qut_recruitment_date),
+                     max = max(qut_recruitment_date))
+```
+
+There was a halt in recruitment during Christmas. The range of recruitment dates was from `r recruit$min` to `r recruit$max`, which is `r as.numeric(recruit$max - recruit$min + 1)` days.
+
+# Compare the control and intervention groups at baseline
+
+The table below is based on those papers that were not excluded because they were a meta-analysis or systematic review.
+
+### Table of categorical variables
+
+```{r categorical.variables}
+cat.tab = tabular( (Heading('Type of Study')*study_type.factor + 
+                    Heading('Has the article been accepted for publication at BMJ Open?')*article_accepted.factor +
+                    Heading('Journal article publication status')*publication_status.factor +
+                      Heading('Has the participant withdrawn from the Study?')*withdrawn.factor
+                     )~(Heading(' ')*random.factor)*((n=1) +  Heading('%')*Percent('col')*Format(digits=0)), data=post.exclusion) 
+pander(cat.tab)
+```
+
+                    
+
+# Primary outcome
+
+```{r scramble, include=FALSE}
+# scramble from now on
+if(scramble == TRUE){
+  set.seed(12345)
+  post.exclusion$random = sample(post.exclusion$random, size=nrow(post.exclusion), replace=F)
+  post.exclusion$random.factor = factor(post.exclusion$random,levels=c("1","2"))
+  levels(post.exclusion$random.factor)=c("control","intervention")
+}
+# data for analysis, not excluded, paper published, and not withdrawn
+for.analysis = filter(post.exclusion, excluded.factor=='No', publication_status.factor == 'Published', withdrawn.factor == "No")
+```
+
+### Did the authors receive a badge?
+
+```{r badge}
+# badge.factor
+tab = tabular( (Heading('Awarded a badge')*badge.factor
+                     ) + 1~(Heading('')*random.factor)*((n=1) +  Heading('%')*Percent('col')*Format(digits=0)), data=for.analysis) 
+pander(tab)
+# test
+tab = with(for.analysis, table(badge.factor, random.factor))
+fisher = fisher.test(tab)
+```
+
+The p-value from the Fisher's exact test is `r format.pval(fisher$p.val, eps=0.001, digits=3)`. We used the Fisher's exact test because of the small cell sizes.
+
+### Data sharing statement
+
+```{r data.statement}
+# badge.factor
+tab = tabular( (Heading('Final Data Sharing Statement')*data_sharing_statement.factor
+                     ) + 1 ~(Heading('')*random.factor)*((n=1) +  Heading('%')*Percent('col')*Format(digits=0)), data=for.analysis) 
+pander(tab)
+```
+
+The data sharing statement has more categories than the binary badge (yes or no) variable.
+
+
+# Secondary outcomes
+
+## Words frequently used in the final data sharing statements (secondary outcome)
+
+Here we examine the words commonly used in the final data sharing statements to examine whether the intervention had an effect on the language used.
+
+```{r words.used, include=FALSE}
+# "We will collect the statements in every “Data sharing statement” and use a word frequency table to compare the two study arms. We will first remove common words such as: at, the, there, their, etc. "
+# process words into corpus
+library(tm)
+control = filter(for.analysis, random.factor=='control')$data_sharing_statement_verbatim_postqut
+intervention = filter(for.analysis, random.factor=='intervention')$data_sharing_statement_verbatim_postqut
+word.freq = function(inwords){
+  docs = Corpus(VectorSource(inwords))
+  # Convert the text to lower case
+  docs <- tm_map(docs, content_transformer(tolower))
+  # Remove numbers
+  docs <- tm_map(docs, removeNumbers)
+  # Remove english common stopwords
+  docs <- tm_map(docs, removeWords, stopwords("english"))
+  # Remove punctuations
+  docs <- tm_map(docs, removePunctuation)
+  # Eliminate extra white spaces
+  docs <- tm_map(docs, stripWhitespace)
+  #
+  dtm <- TermDocumentMatrix(docs)
+  m <- as.matrix(dtm)
+  v <- sort(rowSums(m),decreasing=TRUE)
+  d <- data.frame(word = names(v), freq=v)
+  rownames(d) = NULL
+  return(d)
+} # end of function
+```
+
+#### Top 20 words in control group
+
+```{r top20control}
+control.freq = word.freq(control)
+pander(head(control.freq, 20))
+```
+
+#### Top 20 words in intervention group
+
+```{r top20intervention}
+intervention.freq = word.freq(intervention)
+pander(head(intervention.freq, 20))
+```
+
+
+## Number of words used in the final data sharing statements (secondary outcome)
+
+Here we compare the number of words used to examine whether those in the intervention group tended to write longer data sharing statements.
+
+#### Boxplot by group
+
+```{r word.count.boxplot}
+# "We will also compare the average number of words per data sharing statement and calculate the difference and 95% confidence interval of the difference.""
+bplot = ggplot(data=for.analysis, aes(x=random.factor, y=n.words))+
+  geom_boxplot()+
+  theme_bw()+
+  xlab('')+
+  ylab('Number of words')
+bplot
+```
+
+#### Poisson regression model
+
+```{r word.count.model}
+model = glm(n.words ~ random.factor, data=for.analysis, family=quasipoisson())
+s = summary(model)
+parms = tidy(model)
+parms$term = gsub('random.factor', '', parms$term)
+parms$p.value = format.pval(parms$p.value, eps=0.001, digits=3)
+pander(parms)
+# for text below
+rr =roundz(as.numeric(exp(model$coefficients[2])), digits=2)
+ci = confint(model)
+rr.lower = roundz(exp(ci[2,1]), digits=2)
+rr.upper = roundz(exp(ci[2,2]), digits=2)
+```
+
+We used a Poisson regression model (with over-dispersion) to examine the association between the intervention and the number of words in the data sharing statement. 
+There was no association between the intervention and the number of words. The rate ratio was `r rr` with a 95% confidence interval from `r rr.lower` to `r rr.upper`.
+
+## Time needed, table of summary statistics 
+
+Time needed (in minutes) by the QUT study team to contact authors and verify the datasets.
+We present the summary statistics for both groups combined.
+
+```{r time}
+to.tab = filter(for.analysis, is.na(time_check)==FALSE) # just non-missing
+tab = tabular(time_check ~ (N + Mean*Format(digits=1) + Min + Max), data=to.tab)
+pander(tab)
+```
+# Planned interactions
+
+We will test whether there is an interaction between the main effect of Open Data Badges (intervention or control arm) and:
+
+•	Study type: Clinical trials, observational studies, longitudinal studies, surveys, other
+
+Depending on the numbers recruited we may combine small groups.     
+
+
+# Acknowledgements
+
+Adrian Barnett is supported by a National Health and Medical Research Council Senior Research Fellowship (APP1117784).
+
+# References
+
+* R Core Team (2018). R: A language and environment for statistical computing. R Foundation for Statistical Computing, Vienna, Austria. URL https://www.R-project.org/.
+  
