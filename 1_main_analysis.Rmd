@@ -21,7 +21,9 @@ Sum = function(x) base::sum(x, na.rm=TRUE)
 SD = function(x) stats::sd(x, na.rm=TRUE)
 N = function(x) base::length(x)
 # libraries
+library(tm) # for word frequency
 library(dplyr)
+library(exact2x2) # for CI for Fisher's test
 library(tables)
 library(tm) # for dealing with data sharing statements
 library(broom)
@@ -114,7 +116,7 @@ pander(cat.tab)
 ```{r scramble, include=FALSE}
 # scramble from now on
 if(scramble == TRUE){
-  set.seed(12345)
+  set.seed(123456)
   post.exclusion$random = sample(post.exclusion$random, size=nrow(post.exclusion), replace=F)
   post.exclusion$random.factor = factor(post.exclusion$random,levels=c("1","2"))
   levels(post.exclusion$random.factor)=c("control","intervention")
@@ -130,12 +132,15 @@ for.analysis = filter(post.exclusion, excluded.factor=='No', publication_status.
 tab = tabular( (Heading('Awarded a badge')*badge.factor
                      ) + 1~(Heading('')*random.factor)*((n=1) +  Heading('%')*Percent('col')*Format(digits=0)), data=for.analysis) 
 pander(tab)
-# test
+# test and confidence interval
 tab = with(for.analysis, table(badge.factor, random.factor))
-fisher = fisher.test(tab)
+fisher = exact2x2(tab, tsmethod="minlike")
 ```
 
-The p-value from the Fisher's exact test is `r format.pval(fisher$p.val, eps=0.001, digits=3)`. We used the Fisher's exact test because of the small cell sizes.
+
+We used the Fisher's exact test because of the small cell sizes.
+The odds ratio for awarding badges in the intervention group relative to the control is `r roundz(1/fisher$estimate, 1)` with a 95% confidence interval from `r roundz(1/ fisher$conf.int[2], 1)` to `r roundz( 1/fisher$conf.int[1], 1)`. 
+The p-value from the Fisher's exact test is `r format.pval(fisher$p.val, eps=0.001, digits=3)`. 
 
 ### Data sharing statement
 
@@ -158,7 +163,6 @@ Here we examine the words commonly used in the final data sharing statements to 
 ```{r words.used, include=FALSE}
 # "We will collect the statements in every “Data sharing statement” and use a word frequency table to compare the two study arms. We will first remove common words such as: at, the, there, their, etc. "
 # process words into corpus
-library(tm)
 control = filter(for.analysis, random.factor=='control')$data_sharing_statement_verbatim_postqut
 intervention = filter(for.analysis, random.factor=='intervention')$data_sharing_statement_verbatim_postqut
 word.freq = function(inwords){
