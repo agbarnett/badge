@@ -1,12 +1,12 @@
 # 0_read_data.R
 # get data from REDCap
-# Jan 2019
+# May 2019
 library(dplyr)
 library(stringr)
 
 # run the data processing file that was automatically generated from REDCap
 setwd('data')
-source('BMJOpenBadges_R_2019-01-28_0943.r')
+source('BMJOpenBadges_R_2019-05-24_1042.r')
 setwd('..')
 
 ## tidy data

@@ -42,11 +42,11 @@ l4 = paste('Allocated to control (n=', allocate.control ,')', sep='')
 l5 = paste('Allocated to intervention (n=', allocate.treatment ,')', sep='')
 l6 = paste('Excluded post-randomisation (n=', lost.fu.control, ')\n', # control lost to fu
            '- Paper rejected (n=', rejected.control$count,')\n', 
-           '- Under review (n=', review.control$count,')\n',
+#           '- Under review (n=', review.control$count,')\n', # no longer needed
            '- Participant withdrew (n=', withdrawn.control$count,')', sep='')
 l7 = paste('Excluded post-randomisation (n=', lost.fu.treatment, ')\n', # treatment lost to fu
            '- Paper rejected (n=', rejected.treatment$count,')\n', 
-           '- Under review (n=', review.treatment$count,')\n', 
+#           '- Under review (n=', review.treatment$count,')\n', 
            '- Participant withdrew (n=', withdrawn.treatment$count,')', sep='')
 l8 = paste('Analysed (n=', analysed.control, ')', sep='')
 l9 = paste('Analysed (n=', analysed.treatment, ')', sep='')

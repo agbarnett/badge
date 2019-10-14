@@ -25,9 +25,10 @@ library(tm) # for word frequency
 library(dplyr)
 library(exact2x2) # for CI for Fisher's test
 library(tables)
-library(tm) # for dealing with data sharing statements
 library(broom)
+library(tidyr)
 library(pander)
+library(corpus) # for phrases
 panderOptions('table.emphasize.rownames', FALSE)
 panderOptions('keep.trailing.zeros', TRUE)
 panderOptions('table.split.table', Inf)
@@ -41,19 +42,19 @@ roundz  = function(x, digits=0){formatC( round( x, digits ), format='f', digits=
 # get the data
 load('data/AnalysisReady.RData') # from 0_read_data.R
 # logical to scramble the treatment group (used later)
-scramble = TRUE
+scramble = FALSE
 ```
 
 # Scrambled treatment group
 
-This document contains the statistical analyses for the BMJ Open badges study.
+This document contains the statistical analyses for the _BMJ Open_ badges study.
 The initial document was produced using a scrambled intervention group by randomly assigning participants to intervention or control wards.
 This allowed us to finalise the statistical analyses plan and ensure that all investigators understood the analyses before the real intervention was used.
 
 The descriptive statisics at baseline are presented using the real treatment groups as this does not influence the choice of the final analysis.
 We do not use statistical tests to compare the two randomised groups at baseline as such tests are hard to interpret and are not recommended by the CONSORT guidelines.
 
-This report and the statistical analysis were made using Rmarkdown with R version 3.5.2 (R Core Team 2018). 
+This report and the statistical analysis were made using Rmarkdown with R version 3.6.0 (R Core Team 2019). 
 
 # Participant recruitment
 
@@ -153,7 +154,6 @@ pander(tab)
 
 The data sharing statement has more categories than the binary badge (yes or no) variable.
 
-
 # Secondary outcomes
 
 ## Words frequently used in the final data sharing statements (secondary outcome)
@@ -173,11 +173,15 @@ word.freq = function(inwords){
   docs <- tm_map(docs, removeNumbers)
   # Remove english common stopwords
   docs <- tm_map(docs, removeWords, stopwords("english"))
-  # Remove punctuations
+  # Remove punctuation
   docs <- tm_map(docs, removePunctuation)
   # Eliminate extra white spaces
   docs <- tm_map(docs, stripWhitespace)
-  #
+  # Combine data/dataset/datasets
+  words <- 'datasets|dataset|data'
+  tran <- 'data/dataset'
+  docs <- tm_map(docs, content_transformer(function(x) gsub(x, pattern = words, replacement = tran)))
+#
   dtm <- TermDocumentMatrix(docs)
   m <- as.matrix(dtm)
   v <- sort(rowSums(m),decreasing=TRUE)
@@ -185,22 +189,97 @@ word.freq = function(inwords){
   rownames(d) = NULL
   return(d)
 } # end of function
+# function to prepare data for phrases
+word.phrases = function(inwords){
+  docs = Corpus(VectorSource(inwords))
+  # Convert the text to lower case
+  docs <- tm_map(docs, content_transformer(tolower))
+  # Remove punctuation
+  docs <- tm_map(docs, removePunctuation)
+  # Eliminate extra white spaces
+  docs <- tm_map(docs, stripWhitespace)
+  return(docs)
+} # end of function
 ```
 
 #### Top 20 words in control group
 
 ```{r top20control}
 control.freq = word.freq(control)
-pander(head(control.freq, 20))
+pander(head(control.freq, 20), style='simple')
 ```
 
 #### Top 20 words in intervention group
 
 ```{r top20intervention}
 intervention.freq = word.freq(intervention)
-pander(head(intervention.freq, 20))
+pander(head(intervention.freq, 20), style='simple')
 ```
 
+#### Differences in top 20 words
+
+The plot below shows the difference in ranking in the top 20 words between the two groups.
+
+```{r top.20.plot, fig.width=7, fig.height=7}
+control.freq = mutate(control.freq, 
+                      x=1, 
+                      group = 'Control', 
+                      rank= 1:n())
+intervention.freq = mutate(intervention.freq, 
+                      x=3, 
+                      group = 'Intervention',
+                      rank = 1:n())
+to.plot = bind_rows(control.freq, intervention.freq) %>%
+  filter(rank <= 20) # top 20
+# make data for arrows
+from = filter(to.plot, x==1) %>%
+  rename(y = rank) %>%
+  mutate(x = x + 0.4) # move to the right
+to = filter(to.plot, x==3) %>%
+  mutate(x = x - 0.4) %>% # move to the left
+  rename(xend=x, yend=rank) %>%
+  select(-freq, -group)
+arrows = full_join(from, to, by='word') %>%
+  mutate(x = ifelse(is.na(x), 1.5 - 0.1, x),
+         xend = ifelse(is.na(xend), 2.5 +0.1, xend),
+         y = ifelse(is.na(y), 21, y), # move to outside 20 top
+         yend = ifelse(is.na(yend), 21, yend))
+# plot
+tile.plot = ggplot(to.plot, aes(x=x, y=rank, width=0.8, fill=freq)) +
+  geom_tile( )+
+  geom_text(aes(label=word)) +
+  scale_y_reverse(breaks=c(20,15,10,5,1))+ # high to low rank
+  scale_x_continuous(breaks=c(1,3), labels=c('Control','Intervention'))+
+  xlab('')+
+  ylab('Rank')+
+  scale_fill_gradient('Word\nfrequency', low = "white", high = "red")+
+  geom_segment(data=arrows, aes(x=x, xend=xend, y=y, yend=yend))+
+  g.theme+
+  geom_text(aes(x=1, y=21, label='Outside top 20'), col=grey(0.5))+
+  geom_text(aes(x=3, y=21, label='Outside top 20'), col=grey(0.5))
+tile.plot
+jpeg('figures/top20words.jpg', width=6, height=7, units='in', res=300, quality = 100)
+print(tile.plot)
+invisible(dev.off())
+```
+
+## Look at three-word common phrases
+
+### Control group
+
+```{r control.phrases}
+control.phrases = word.phrases(control)
+phrases = term_stats(control.phrases, ngrams = 3)
+pander(head(phrases, 10), style='simple')
+```
+
+### Intervention group
+
+```{r interveion.phrases}
+intervention.phrases = word.phrases(intervention)
+phrases = term_stats(intervention.phrases, ngrams = 3)
+pander(head(phrases, 10), style='simple')
+```
 
 ## Number of words used in the final data sharing statements (secondary outcome)
 
@@ -218,24 +297,27 @@ bplot = ggplot(data=for.analysis, aes(x=random.factor, y=n.words))+
 bplot
 ```
 
-#### Poisson regression model
+#### Poisson regression model of word counts
 
 ```{r word.count.model}
 model = glm(n.words ~ random.factor, data=for.analysis, family=quasipoisson())
 s = summary(model)
-parms = tidy(model)
-parms$term = gsub('random.factor', '', parms$term)
-parms$p.value = format.pval(parms$p.value, eps=0.001, digits=3)
-pander(parms)
+parms = tidy(model, conf.int=TRUE, conf.level=0.95) %>%
+  mutate(term = gsub('random.factor|\\(|\\)', '', term),
+         p.value = format.pval(p.value, eps=0.001, digits=3)) %>%
+  rename('mean' = 'estimate', lower=conf.low, upper=conf.high) %>%
+  select('term','mean','lower','upper','p.value')
+pander(parms, style='simple', digits=2)
 # for text below
-rr =roundz(as.numeric(exp(model$coefficients[2])), digits=2)
+rr = roundz(as.numeric(exp(model$coefficients[2])), digits=2)
 ci = confint(model)
 rr.lower = roundz(exp(ci[2,1]), digits=2)
 rr.upper = roundz(exp(ci[2,2]), digits=2)
 ```
 
-We used a Poisson regression model (with over-dispersion) to examine the association between the intervention and the number of words in the data sharing statement. 
-There was no association between the intervention and the number of words. The rate ratio was `r rr` with a 95% confidence interval from `r rr.lower` to `r rr.upper`.
+We used a Poisson regression model with over-dispersion to examine the association between the intervention and the number of words in the data sharing statement. 
+The table shows the parameter estimates on the log-scale.
+There was no association between the intervention and the number of words. The mean rate ratio was `r rr` with a 95% confidence interval from `r rr.lower` to `r rr.upper`.
 
 ## Time needed, table of summary statistics 
 
@@ -262,5 +344,5 @@ Adrian Barnett is supported by a National Health and Medical Research Council Se
 
 # References
 
-* R Core Team (2018). R: A language and environment for statistical computing. R Foundation for Statistical Computing, Vienna, Austria. URL https://www.R-project.org/.
+* R Core Team (2019). R: A language and environment for statistical computing. R Foundation for Statistical Computing, Vienna, Austria. URL https://www.R-project.org/.
   
